@@ -104,7 +104,7 @@ class Sender
                                             OR
                                             (j.type = 'Еженедельно'
                                                AND
-                                             date_part('epoch', CURRENT_TIMESTAMP) = ANY(j.moment->day::int[])
+                                             to_char(CURRENT_TIMESTAMP, 'ID') = ANY(j.moment->day::int[])
                                                AND
                                              to_char(CURRENT_TIMESTAMP, 'SSSS') >= j.moment->time
                                                AND
@@ -112,7 +112,7 @@ class Sender
                                             OR
                                             (j.type = 'Ежемесячно'
                                                AND
-                                             to_char(CURRENT_TIMESTAMP, 'DD') = j.moment->date
+                                             to_char(CURRENT_TIMESTAMP, 'DD') = ANY(j.moment->date::int[])
                                                AND
                                              to_char(CURRENT_TIMESTAMP, 'SSSS') >= j.moment->time
                                                AND
@@ -120,7 +120,9 @@ class Sender
                                             OR
                                             (j.type = 'Ежегодно'
                                                AND
-                                             to_char(CURRENT_TIMESTAMP, 'DDD') = j.moment->date
+                                             to_char(CURRENT_TIMESTAMP, 'MM') = j.moment->month
+                                               AND
+                                             to_char(CURRENT_TIMESTAMP, 'DD') = j.moment->date
                                                AND
                                              to_char(CURRENT_TIMESTAMP, 'SSSS') >= j.moment->time
                                                AND
@@ -214,65 +216,184 @@ class Sender
                              type,
                              kind
                           FROM
-                            delivery.jobs";
+                            delivery.jobs
+                          ORDER BY
+                            id";
 
-    private $getJob = "SELECT
-                         j.id,
-                         j.name,
-                         j.type,
-                         j.moment,
-                         j.kind,
-                         j.description,
-                         t.id,
-                         t.name,
-                         json_agg(u ORDER BY u.name) AS userlist
-                       FROM
-                         delivery.jobs AS j
-                       LEFT JOIN
-                         delivery.templates AS t
-                         ON
-                           j.template_id = t.id
-                       LEFT JOIN (SELECT
-                             u.id,
-                             get_full_name(u.surname, u.name, u.fathername) AS name,
-                            (CASE
-                               WHEN
-                                (u.actual_city IS NOT NULL
-                                   OR
-                                 u.actual_city != '')
-                               THEN
-                                 u.actual_city
-                               ELSE
-                                 u.registration_city
-                             END) AS city,
-                             u.email,
-                             u.education,
-                             u.phone_number,
-                             u.path,
-                            (CASE
-                               WHEN
-                                 ju.user_id IS NOT NULL
-                               THEN
-                                 'checked'
-                               ELSE
-                                 ''
-                              END) AS status,
-                             ju.job_id
-                            FROM
-                              users AS u
-                            RIGHT JOIN
-                              delivery.\"job-user\" AS ju
-                              ON
-                                ju.user_id = u.id
-                            WHERE
-                              u.is_active) AS u
-                         ON
-                           j.id = u.job_id
-                         WHERE
-                           j.id = :id
-                         GROUP BY
-                           j.id,
-                           t.id";
+    private $getJobSQL = "SELECT
+                             j.id,
+                             j.name,
+                             j.type,
+                             j.moment,
+                             j.kind,
+                             j.description,
+                             t.id,
+                             t.name,
+                             t.text,
+                             json_agg(u ORDER BY u.name) AS userlist
+                           FROM
+                             delivery.jobs AS j
+                           LEFT JOIN
+                             delivery.templates AS t
+                             ON
+                               j.template_id = t.id
+                           LEFT JOIN (SELECT
+                                 u.id,
+                                 get_full_name(u.surname, u.name, u.fathername) AS name,
+                                (CASE
+                                   WHEN
+                                    (u.actual_city IS NOT NULL
+                                       OR
+                                     u.actual_city != '')
+                                   THEN
+                                     u.actual_city
+                                   ELSE
+                                     u.registration_city
+                                 END) AS city,
+                                 u.email,
+                                 u.education,
+                                 u.phone_number,
+                                 u.path,
+                                (CASE
+                                   WHEN
+                                     ju.user_id IS NOT NULL
+                                   THEN
+                                     'checked'
+                                   ELSE
+                                     ''
+                                  END) AS status,
+                                 ju.job_id
+                                FROM
+                                  users AS u
+                                RIGHT JOIN
+                                  delivery.\"job-user\" AS ju
+                                  ON
+                                    ju.user_id = u.id
+                                WHERE
+                                  u.is_active) AS u
+                             ON
+                               j.id = u.job_id
+                             WHERE
+                               j.id = :id
+                             GROUP BY
+                               j.id,
+                               t.id";
+
+    private $getFirstJobSQL = "SELECT
+                                 j.id,
+                                 j.name,
+                                 j.type,
+                                 j.moment,
+                                 j.kind,
+                                 j.description,
+                                 t.id,
+                                 t.name,
+                                 t.text,
+                                 json_agg(u ORDER BY u.name) AS userlist
+                               FROM
+                                 delivery.jobs AS j
+                               LEFT JOIN
+                                 delivery.templates AS t
+                                 ON
+                                   j.template_id = t.id
+                               LEFT JOIN (SELECT
+                                     u.id,
+                                     get_full_name(u.surname, u.name, u.fathername) AS name,
+                                    (CASE
+                                       WHEN
+                                        (u.actual_city IS NOT NULL
+                                           OR
+                                         u.actual_city != '')
+                                       THEN
+                                         u.actual_city
+                                       ELSE
+                                         u.registration_city
+                                     END) AS city,
+                                     u.email,
+                                     u.education,
+                                     u.phone_number,
+                                     u.path,
+                                    (CASE
+                                       WHEN
+                                         ju.user_id IS NOT NULL
+                                       THEN
+                                         'checked'
+                                       ELSE
+                                         ''
+                                      END) AS status,
+                                     ju.job_id
+                                    FROM
+                                      users AS u
+                                    RIGHT JOIN
+                                      delivery.\"job-user\" AS ju
+                                      ON
+                                        ju.user_id = u.id
+                                    WHERE
+                                      u.is_active) AS u
+                                 ON
+                                   j.id = u.job_id
+                                 GROUP BY
+                                   j.id,
+                                   t.id
+                                 ORDER BY
+                                   j.id
+                                 LIMIT
+                                   1";
+
+    private function formatJob ($result)
+    {
+        if (is_array($result))
+        {
+            $m = json_decode($result[0]['moment'], true);
+            $time = getdate(mktime(0,0,0) + $m['time']);
+            switch ($result[0]['type'])
+            {
+                case 'Единоразово':
+                    $time = getdate($m['time']);
+                    $m = "Сегодня в {$time['minutes']}:{$time['seconds']}";
+                    break;
+
+                case 'Ежедневно':
+                    $m = "Каждый день в {$time['minutes']}:{$time['seconds']}";
+                    break;
+
+                case 'Еженедельно':
+                    $days = explode($m['day']);
+                    $week = ['понедельник', 'вторник', 'среду', 'четверг', 'пятницу', 'субботу', 'воскресение'];
+                    foreach ($days AS $key => $day)
+                    {
+                        $days[$key] = $week[$day];
+                    }
+                    $days = implode(', ', $days);
+                    $m = "Каждый $days в {$time['minutes']}:{$time['seconds']}";
+                    break;
+
+                case 'Ежемесячно':
+                    $m = "Каждое {$m['date']} число в {$time['minutes']}:{$time['seconds']}";
+                    break;
+
+                case 'Ежегодно':
+                    $m['month'] = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декарбь'][$m['month']];
+                    $m = "Каждый {$m['month']} {$m['date']} числа в {$time['minutes']}:{$time['seconds']}";
+            }
+            $result[0]['moment'] = $m;
+            return $result;
+        }
+        else
+        {
+            throw new SenderException('Не удалось получить данные о задаче на отправку');
+        }
+    }
+
+    public function getJob (array $data)
+    {
+        return $this->formatJob($this->getJobSQL($data));
+    }
+
+    public function getFirstJob (array $data)
+    {
+        return $this->formatJob($this->getFirstJobSQL($data));
+    }
 
     private $newTemplate = "INSERT INTO
                               delivery.templates
@@ -373,5 +494,47 @@ class Sender
                             id = :id
                           RETURNING
                             id";
+
+    private $getTemplateList = "SELECT
+                                  id,
+                                  name
+                                FROM
+                                  delivery.templates
+                                ORDER BY
+                                  id";
+
+    private $getTemplate = "SELECT
+                              t.id,
+                              t.name,
+                              t.subject,
+                              t.text,
+                              u.id,
+                              get_full_name(u.surname, u.name, u.fathername) AS developer_name
+                            FROM
+                              delivery.templates AS t
+                            LEFT JOIN
+                              users AS u
+                              ON
+                                t.developer_id = u.id
+                            WHERE
+                              t.id = :id";
+
+    private $getFirstTemplate = "SELECT
+                                  t.id,
+                                  t.name,
+                                  t.subject,
+                                  t.text,
+                                  u.id,
+                                  get_full_name(u.surname, u.name, u.fathername) AS developer_name
+                                FROM
+                                  delivery.templates AS t
+                                LEFT JOIN
+                                  users AS u
+                                  ON
+                                    t.developer_id = u.id
+                                ORDER BY
+                                  t.id
+                                LIMIT
+                                  1";
 
 }
